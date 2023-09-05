@@ -1,6 +1,7 @@
 import Foundation
 import Virtualization
 import AsyncAlgorithms
+import Dynamic
 
 struct UnsupportedRestoreImageError: Error {
 }
@@ -57,11 +58,11 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
     // Initialize the virtual machine and its configuration
     self.network = network
     configuration = try Self.craftConfiguration(diskURL: vmDir.diskURL,
-                                                nvramURL: vmDir.nvramURL, vmConfig: config,
-                                                network: network, additionalDiskAttachments: additionalDiskAttachments,
-                                                directorySharingDevices: directorySharingDevices,
-                                                serialPorts: serialPorts,
-                                                suspendable: suspendable
+                                                    nvramURL: vmDir.nvramURL, romURL: vmDir.romURL, vmConfig: config,
+                                                    network: network, additionalDiskAttachments: additionalDiskAttachments,
+                                                    directorySharingDevices: directorySharingDevices,
+                                                    serialPorts: serialPorts,
+                                                    suspendable: suspendable
     )
     virtualMachine = VZVirtualMachine(configuration: configuration)
 
@@ -137,6 +138,7 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
     vmDir: VMDirectory,
     ipswURL: URL,
     diskSizeGB: UInt16,
+    romURL: URL,
     network: Network = NetworkShared(),
     additionalDiskAttachments: [VZDiskImageStorageDeviceAttachment] = [],
     directorySharingDevices: [VZDirectorySharingDeviceConfiguration] = [],
@@ -181,14 +183,17 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
     // allocate at least 4 CPUs because otherwise VMs are frequently freezing
     try config.setCPU(cpuCount: max(4, requirements.minimumSupportedCPUCount))
     try config.save(toURL: vmDir.configURL)
+      
+    // Copy ROM
+    try FileManager.default.copyItem(atPath: romURL.path, toPath: vmDir.romURL.path)
 
     // Initialize the virtual machine and its configuration
     self.network = network
     configuration = try Self.craftConfiguration(diskURL: vmDir.diskURL, nvramURL: vmDir.nvramURL,
-                                                vmConfig: config, network: network,
-                                                additionalDiskAttachments: additionalDiskAttachments,
-                                                directorySharingDevices: directorySharingDevices,
-                                                serialPorts: serialPorts
+                                                    romURL: vmDir.romURL, vmConfig: config, network: network,
+                                                    additionalDiskAttachments: additionalDiskAttachments,
+                                                    directorySharingDevices: directorySharingDevices,
+                                                    serialPorts: serialPorts
     )
     virtualMachine = VZVirtualMachine(configuration: configuration)
 
@@ -225,13 +230,13 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
     return try VM(vmDir: vmDir)
   }
 
-  func start(recovery: Bool, resume shouldResume: Bool) async throws {
+  func start(vmStartOptions: VMStartOptions, resume shouldResume: Bool) async throws {
     try network.run(sema)
 
     if shouldResume {
       try await resume()
     } else {
-      try await start(recovery)
+      try await start(vmStartOptions)
     }
   }
 
@@ -252,10 +257,15 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
   }
 
   @MainActor
-  private func start(_ recovery: Bool) async throws {
-    let startOptions = VZMacOSVirtualMachineStartOptions()
-    startOptions.startUpFromMacOSRecovery = recovery
-    try await virtualMachine.start(options: startOptions)
+  private func start(_ vmStartOptions: VMStartOptions) async throws {
+      // new API introduced in Ventura
+      let startOptions = VZMacOSVirtualMachineStartOptions()
+      startOptions.startUpFromMacOSRecovery = vmStartOptions.startUpFromMacOSRecovery
+      Dynamic(startOptions)._setForceDFU(vmStartOptions.forceDFU)
+      Dynamic(startOptions)._setPanicAction(vmStartOptions.stopOnPanic)
+      Dynamic(startOptions)._setStopInIBootStage1(vmStartOptions.stopInIBootStage1)
+      Dynamic(startOptions)._setStopInIBootStage2(vmStartOptions.stopInIBootStage2)
+      Dynamic(startOptions)._setFatalErrorAction(vmStartOptions.stopOnFatalError)
   }
 
   @MainActor
@@ -271,6 +281,7 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
   static func craftConfiguration(
     diskURL: URL,
     nvramURL: URL,
+    romURL: URL,
     vmConfig: VMConfig,
     network: Network = NetworkShared(),
     additionalDiskAttachments: [VZDiskImageStorageDeviceAttachment],
@@ -281,7 +292,9 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
     let configuration = VZVirtualMachineConfiguration()
 
     // Boot loader
-    configuration.bootLoader = try vmConfig.platform.bootLoader(nvramURL: nvramURL)
+    let bootloader = try vmConfig.platform.bootLoader(nvramURL: nvramURL)
+    Dynamic(bootloader)._setROMURL(romURL)
+    configuration.bootLoader = bootloader
 
     // CPU and memory
     configuration.cpuCount = vmConfig.cpuCount
@@ -335,9 +348,24 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
 
     // Directory sharing devices
     configuration.directorySharingDevices = directorySharingDevices
+      
+    // Debug port
+    let debugStub = Dynamic._VZGDBDebugStubConfiguration(port: vmConfig.debugPort)
+    Dynamic(configuration)._setDebugStub(debugStub)
 
-    // Serial Port
-    configuration.serialPorts = serialPorts
+    // Serial console; configure only if no prior serial ports are configured
+    if serialPorts.isEmpty {
+      // Configure internal Mac serial I/O
+      let serialPort: VZSerialPortConfiguration = Dynamic._VZPL011SerialPortConfiguration().asObject as! VZSerialPortConfiguration
+      serialPort.attachment = VZFileHandleSerialPortAttachment(
+        fileHandleForReading: FileHandle.standardInput,
+        fileHandleForWriting: FileHandle.standardOutput
+      )
+      configuration.serialPorts = [serialPort]
+    } else {
+      // Previously configured serial ports
+      configuration.serialPorts = serialPorts
+    }
 
     // Version console device
     //
@@ -350,6 +378,12 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
     consoleDevice.ports[0] = consolePort
 
     configuration.consoleDevices.append(consoleDevice)
+
+    // Panic device (needed on macOS 14+ when setPanicAction is enabled)
+    if #available(macOS 14, *) {
+      let panicDevice = Dynamic._VZPvPanicDeviceConfiguration()
+      Dynamic(configuration)._setPanicDevice(panicDevice)
+    }
 
     try configuration.validate()
 

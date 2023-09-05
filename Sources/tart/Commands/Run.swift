@@ -38,6 +38,23 @@ struct Run: AsyncParsableCommand {
   @Flag(help: "Boot into recovery mode")
   var recovery: Bool = false
 
+  @Flag(help: "Boot into DFU mode") 
+  var dfu: Bool = false
+    
+  @Flag(help: ArgumentHelp(
+    "Halt on fatal error",
+    discussion: "Requires host to be macOS 14.0 (Sonoma) or newer."))
+  var stopOnFatalError: Bool = false
+
+  @Flag(help: "Halt when panicked") 
+  var stopOnPanic: Bool = false
+
+  @Flag(help: "Halt when loading iBootStage1") 
+  var stopInIBootStage1: Bool = false
+
+  @Flag(help: "Halt when loading iBootStage2") 
+  var stopInIBootStage2: Bool = false
+
   @Flag(help: ArgumentHelp(
     "Use screen sharing instead of the built-in UI.",
     discussion: "Useful since Screen Sharing supports copy/paste, drag and drop, etc.\n"
@@ -231,8 +248,17 @@ struct Run: AsyncParsableCommand {
             print("resuming VM...")
           }
         }
+          
+        let startOptions = VMStartOptions(
+          startUpFromMacOSRecovery: recovery,
+          forceDFU: dfu,
+          stopOnFatalError: stopOnFatalError,
+          stopOnPanic: stopOnPanic,
+          stopInIBootStage1: stopInIBootStage1,
+          stopInIBootStage2: stopInIBootStage2
+        )
 
-        try await vm!.start(recovery: recovery, resume: resume)
+        try await vm!.start(vmStartOptions: startOptions, resume: resume)
 
         if let vncImpl = vncImpl {
           let vncURL = try await vncImpl.waitForURL()
