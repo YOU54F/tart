@@ -77,8 +77,10 @@ struct VMDirectory: Prunable {
   var initialized: Bool {
     FileManager.default.fileExists(atPath: configURL.path) &&
       FileManager.default.fileExists(atPath: diskURL.path) &&
-      FileManager.default.fileExists(atPath: nvramURL.path) &&
-      FileManager.default.fileExists(atPath: romURL.path)
+      FileManager.default.fileExists(atPath: nvramURL.path)
+      // && FileManager.default.fileExists(atPath: romURL.path)
+      // TODO: fails to list existing tart images with this check
+      // check what other parts of images might be affected
   }
 
   func initialize(overwrite: Bool = false) throws {

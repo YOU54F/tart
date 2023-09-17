@@ -143,6 +143,7 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
     ipswURL: URL,
     diskSizeGB: UInt16,
     romURL: URL,
+    copyRom: Bool = false,
     network: Network = NetworkShared(),
     additionalDiskAttachments: [VZDiskImageStorageDeviceAttachment] = [],
     directorySharingDevices: [VZDirectorySharingDeviceConfiguration] = [],
@@ -184,21 +185,33 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
       cpuCountMin: requirements.minimumSupportedCPUCount,
       memorySizeMin: requirements.minimumSupportedMemorySize
     )
+    defaultLogger.appendNewLine("requirements: \(requirements)")
     // allocate at least 4 CPUs because otherwise VMs are frequently freezing
     try config.setCPU(cpuCount: max(4, requirements.minimumSupportedCPUCount))
     try config.save(toURL: vmDir.configURL)
       
-    // Copy ROM
-    try FileManager.default.copyItem(atPath: romURL.path, toPath: vmDir.romURL.path)
-
-    // Initialize the virtual machine and its configuration
     self.network = network
+    // Copy ROM
+    if copyRom {
+      defaultLogger.appendNewLine("Copying ROM...")
+      try FileManager.default.copyItem(atPath: romURL.path, toPath: vmDir.romURL.path)
+    // Initialize the virtual machine and its configuration adding romURL
     configuration = try Self.craftConfiguration(diskURL: vmDir.diskURL, nvramURL: vmDir.nvramURL,
                                                     romURL: vmDir.romURL, vmConfig: config, network: network,
                                                     additionalDiskAttachments: additionalDiskAttachments,
                                                     directorySharingDevices: directorySharingDevices,
                                                     serialPorts: serialPorts
     )
+    } else {
+    // Initialize the virtual machine and its configuration
+    configuration = try Self.craftConfiguration(diskURL: vmDir.diskURL, nvramURL: vmDir.nvramURL,
+                                                    vmConfig: config, network: network,
+                                                    additionalDiskAttachments: additionalDiskAttachments,
+                                                    directorySharingDevices: directorySharingDevices,
+                                                    serialPorts: serialPorts
+    ) 
+    }
+
     virtualMachine = VZVirtualMachine(configuration: configuration)
 
     super.init()
@@ -235,11 +248,14 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
   }
 
   func start(vmStartOptions: VMStartOptions, resume shouldResume: Bool) async throws {
+      defaultLogger.appendNewLine("we starting?")
     try network.run(sema)
 
     if shouldResume {
+        defaultLogger.appendNewLine("resume to start")
       try await resume()
     } else {
+      defaultLogger.appendNewLine("trying to start")
       try await start(vmStartOptions)
     }
   }
@@ -262,6 +278,7 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
 
   @MainActor
   private func start(_ vmStartOptions: VMStartOptions) async throws {
+    if #available(macOS 13, *) {
       // new API introduced in Ventura
       let startOptions = VZMacOSVirtualMachineStartOptions()
       startOptions.startUpFromMacOSRecovery = vmStartOptions.startUpFromMacOSRecovery
@@ -269,7 +286,14 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
       Dynamic(startOptions)._setPanicAction(vmStartOptions.stopOnPanic)
       Dynamic(startOptions)._setStopInIBootStage1(vmStartOptions.stopInIBootStage1)
       Dynamic(startOptions)._setStopInIBootStage2(vmStartOptions.stopInIBootStage2)
-      Dynamic(startOptions)._setFatalErrorAction(vmStartOptions.stopOnFatalError)
+      if #available(macOS 14, *) {
+        Dynamic(startOptions)._setFatalErrorAction(vmStartOptions.stopOnFatalError)
+      }
+      try await virtualMachine.start(options: startOptions)
+      } else {
+      // use method that also available on Monterey
+      try await virtualMachine.start(vmStartOptions.startUpFromMacOSRecovery)
+    }
   }
 
   @MainActor
@@ -285,7 +309,7 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
   static func craftConfiguration(
     diskURL: URL,
     nvramURL: URL,
-    romURL: URL,
+    romURL: URL? = nil,
     vmConfig: VMConfig,
     network: Network = NetworkShared(),
     additionalDiskAttachments: [VZDiskImageStorageDeviceAttachment],
@@ -296,9 +320,27 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
     let configuration = VZVirtualMachineConfiguration()
 
     // Boot loader
-    let bootloader = try vmConfig.platform.bootLoader(nvramURL: nvramURL)
-    Dynamic(bootloader)._setROMURL(romURL)
-    configuration.bootLoader = bootloader
+
+    defaultLogger.appendNewLine("romURL in craftConfiguration: \(romURL)")
+    let fileManager = FileManager.default
+    if let romURL = romURL {
+        if fileManager.fileExists(atPath: romURL.path) {
+            // romURL exists on disk, do something with it
+            defaultLogger.appendNewLine("custom romURL exists on disk: \(romURL)")
+            let bootloader = try vmConfig.platform.bootLoader(nvramURL: nvramURL)
+            Dynamic(bootloader)._setROMURL(romURL)
+            configuration.bootLoader = bootloader
+        } else {
+            // romURL does not exist on disk, do something else
+            defaultLogger.appendNewLine("romURL does not exist on disk")
+            configuration.bootLoader = try vmConfig.platform.bootLoader(nvramURL: nvramURL)
+        }
+    } else {
+        // romURL is nil, do something else
+        print("custom romURL does not exist")
+        configuration.bootLoader = try vmConfig.platform.bootLoader(nvramURL: nvramURL)
+
+    }
 
     // CPU and memory
     configuration.cpuCount = vmConfig.cpuCount
@@ -385,11 +427,11 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
       configuration.consoleDevices.append(consoleDevice)
     }
 
-    // Panic device (needed on macOS 14+ when setPanicAction is enabled)
-    if #available(macOS 14, *) {
-      let panicDevice = Dynamic._VZPvPanicDeviceConfiguration()
-      Dynamic(configuration)._setPanicDevice(panicDevice)
-    }
+      // Panic device (needed on macOS 14+ when setPanicAction is enabled)
+      if #available(macOS 14, *) {
+        let panicDevice = Dynamic._VZPvPanicDeviceConfiguration()
+        Dynamic(configuration)._setPanicDevice(panicDevice)
+      }
 
     try configuration.validate()
 

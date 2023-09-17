@@ -21,6 +21,9 @@ struct Create: AsyncParsableCommand {
   @Option(help: ArgumentHelp("Path to custom ROM image (AVPBooter)"))
   var romPath: String = "/System/Library/Frameworks/Virtualization.framework/Versions/A/Resources/AVPBooter.vmapple2.bin";
 
+  @Flag(help: "copy rom on creation")
+  var copyRom: Bool = false
+
   func validate() throws {
     if fromIPSW == nil && !linux {
       throw ValidationError("Please specify either a --from-ipsw or --linux option!")
