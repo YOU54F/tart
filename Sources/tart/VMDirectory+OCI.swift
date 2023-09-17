@@ -1,6 +1,6 @@
 import Foundation
 import Compression
-import Sentry
+// import Sentry
 
 enum OCIError: Error {
   case ShouldBeExactlyOneLayer
@@ -78,7 +78,7 @@ extension VMDirectory {
     }
     try filter.finalize()
     try disk.close()
-    SentrySDK.span?.setMeasurement(name: "compressed_disk_size", value: diskCompressedSize as NSNumber, unit: MeasurementUnitInformation.byte);
+    // SentrySDK.span?.setMeasurement(name: "compressed_disk_size", value: diskCompressedSize as NSNumber, unit: MeasurementUnitInformation.byte);
 
     // Pull VM's NVRAM file layer and store it in an NVRAM file
     defaultLogger.appendNewLine("pulling NVRAM...")

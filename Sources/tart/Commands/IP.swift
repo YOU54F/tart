@@ -2,7 +2,7 @@ import ArgumentParser
 import Foundation
 import Network
 import SystemConfiguration
-import Sentry
+// import Sentry
 
 enum IPResolutionStrategy: String, ExpressibleByArgument, CaseIterable {
   case dhcp, arp

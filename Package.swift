@@ -18,7 +18,7 @@ let package = Package(
     .package(url: "https://github.com/antlr/antlr4", branch: "dev"),
     .package(url: "https://github.com/apple/swift-atomics.git", .upToNextMajor(from: "1.0.0")),
     .package(url: "https://github.com/nicklockwood/SwiftFormat", from: "0.50.6"),
-    .package(url: "https://github.com/getsentry/sentry-cocoa", from: "8.8.0"),
+    // .package(url: "https://github.com/getsentry/sentry-cocoa", from: "8.8.0"),
     .package(url: "https://github.com/cfilipov/TextTable", branch: "master"),
     .package(url: "https://github.com/sersoft-gmbh/swift-sysctl.git", from: "1.0.0"),
   ],
@@ -31,7 +31,7 @@ let package = Package(
       .product(name: "SwiftDate", package: "SwiftDate"),
       .product(name: "Antlr4Static", package: "Antlr4"),
       .product(name: "Atomics", package: "swift-atomics"),
-      .product(name: "Sentry", package: "sentry-cocoa"),
+      // .product(name: "Sentry", package: "sentry-cocoa"),
       .product(name: "TextTable", package: "TextTable"),
       .product(name: "Sysctl", package: "swift-sysctl"),
     ], exclude: [

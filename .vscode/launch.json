@@ -1,0 +1,28 @@
+{
+    "configurations": [
+        {
+            "type": "lldb",
+            "request": "launch",
+            "sourceLanguages": [
+                "swift"
+            ],
+            "name": "Debug tart",
+            "program": "${workspaceFolder:tart}/.build/debug/tart",
+            "args": [],
+            "cwd": "${workspaceFolder:tart}",
+            "preLaunchTask": "swift: Build Debug tart"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "sourceLanguages": [
+                "swift"
+            ],
+            "name": "Release tart",
+            "program": "${workspaceFolder:tart}/.build/release/tart",
+            "args": [],
+            "cwd": "${workspaceFolder:tart}",
+            "preLaunchTask": "swift: Build Release tart"
+        }
+    ]
+}

@@ -1,6 +1,6 @@
 import ArgumentParser
 import Dispatch
-import Sentry
+// import Sentry
 import SwiftUI
 import SwiftDate
 
@@ -109,9 +109,9 @@ struct Prune: AsyncParsableCommand {
       return
     }
 
-    SentrySDK.configureScope { scope in
-      scope.setContext(value: ["requiredBytes": requiredBytes], key: "Prune")
-    }
+    // SentrySDK.configureScope { scope in
+    //   scope.setContext(value: ["requiredBytes": requiredBytes], key: "Prune")
+    // }
 
     // Figure out how much disk space is available
     let attrs = try Config().tartCacheDir.resourceValues(forKeys: [
@@ -123,18 +123,18 @@ struct Prune: AsyncParsableCommand {
       UInt64(attrs.volumeAvailableCapacityForImportantUsage!)
     )
 
-    SentrySDK.configureScope { scope in
-      scope.setContext(value: [
-        "volumeAvailableCapacity": attrs.volumeAvailableCapacity!,
-        "volumeAvailableCapacityForImportantUsage": attrs.volumeAvailableCapacityForImportantUsage!,
-        "volumeAvailableCapacityCalculated": volumeAvailableCapacityCalculated
-      ], key: "Prune")
-    }
+    // SentrySDK.configureScope { scope in
+    //   scope.setContext(value: [
+    //     "volumeAvailableCapacity": attrs.volumeAvailableCapacity!,
+    //     "volumeAvailableCapacityForImportantUsage": attrs.volumeAvailableCapacityForImportantUsage!,
+    //     "volumeAvailableCapacityCalculated": volumeAvailableCapacityCalculated
+    //   ], key: "Prune")
+    // }
 
     if volumeAvailableCapacityCalculated <= 0 {
-      SentrySDK.capture(message: "Zero volume capacity reported") { scope in
-        scope.setLevel(.warning)
-      }
+      // SentrySDK.capture(message: "Zero volume capacity reported") { scope in
+      //   scope.setLevel(.warning)
+      // }
 
       return
     }
@@ -149,8 +149,8 @@ struct Prune: AsyncParsableCommand {
   }
 
   private static func reclaimIfPossible(_ reclaimBytes: UInt64, _ initiator: Prunable? = nil) throws {
-    let transaction = SentrySDK.startTransaction(name: "Pruning cache", operation: "prune", bindToScope: true)
-    defer { transaction.finish() }
+    // let transaction = SentrySDK.startTransaction(name: "Pruning cache", operation: "prune", bindToScope: true)
+    // defer { transaction.finish() }
 
     let prunableStorages: [PrunableStorage] = [VMStorageOCI(), try IPSWCache()]
     let prunables: [Prunable] = try prunableStorages
@@ -177,13 +177,13 @@ struct Prune: AsyncParsableCommand {
         continue
       }
 
-      try SentrySDK.span?.setData(value: prunable.sizeBytes(), key: prunable.url.path)
+      // try SentrySDK.span?.setData(value: prunable.sizeBytes(), key: prunable.url.path)
 
       cacheReclaimedBytes += try prunable.sizeBytes()
 
       try prunable.delete()
     }
 
-    SentrySDK.span?.setMeasurement(name: "gc_disk_reclaimed", value: cacheReclaimedBytes as NSNumber, unit: MeasurementUnitInformation.byte);
+    // SentrySDK.span?.setMeasurement(name: "gc_disk_reclaimed", value: cacheReclaimedBytes as NSNumber, unit: MeasurementUnitInformation.byte);
   }
 }

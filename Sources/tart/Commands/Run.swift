@@ -3,7 +3,7 @@ import Cocoa
 import Dispatch
 import SwiftUI
 import Virtualization
-import Sentry
+// import Sentry
 
 var vm: VM?
 
@@ -280,8 +280,8 @@ struct Run: AsyncParsableCommand {
         Foundation.exit(0)
       } catch {
         // Capture the error into Sentry
-        SentrySDK.capture(error: error)
-        SentrySDK.flush(timeout: 2.seconds.timeInterval)
+        // SentrySDK.capture(error: error)
+        // SentrySDK.flush(timeout: 2.seconds.timeInterval)
 
         fputs("\(error)\n", stderr)
 

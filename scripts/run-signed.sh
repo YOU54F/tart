@@ -5,7 +5,7 @@
 
 set -e
 
-swift build --product tart
-codesign --sign - --entitlements Resources/tart-dev.entitlements --force .build/debug/tart
+swift build --product tart --configuration release
+codesign --sign - --entitlements Resources/tart-prod.entitlements --force .build/release/tart
 
-.build/debug/tart "$@"
+.build/release/tart "$@"

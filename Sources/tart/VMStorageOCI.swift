@@ -1,5 +1,5 @@
 import Foundation
-import Sentry
+// import Sentry
 
 class VMStorageOCI: PrunableStorage {
   let baseURL = try! Config().tartCacheDir.appendingPathComponent("OCIs", isDirectory: true)
@@ -133,9 +133,9 @@ class VMStorageOCI: PrunableStorage {
   }
 
   func pull(_ name: RemoteName, registry: Registry) async throws {
-    SentrySDK.configureScope { scope in
-      scope.setContext(value: ["imageName": name], key: "OCI")
-    }
+    // SentrySDK.configureScope { scope in
+    //   scope.setContext(value: ["imageName": name], key: "OCI")
+    // }
 
     defaultLogger.appendNewLine("pulling manifest...")
 
@@ -169,7 +169,7 @@ class VMStorageOCI: PrunableStorage {
     }
 
     if !exists(digestName) {
-      let transaction = SentrySDK.startTransaction(name: name.description, operation: "pull", bindToScope: true)
+      // let transaction = SentrySDK.startTransaction(name: name.description, operation: "pull", bindToScope: true)
       let tmpVMDir = try VMDirectory.temporaryDeterministic(key: name.description)
 
       // Lock the temporary VM directory to prevent it's garbage collection
@@ -178,9 +178,9 @@ class VMStorageOCI: PrunableStorage {
 
       // Try to reclaim some cache space if we know the VM size in advance
       if let uncompressedDiskSize = manifest.uncompressedDiskSize() {
-        SentrySDK.configureScope { scope in
-          scope.setContext(value: ["imageUncompressedDiskSize": uncompressedDiskSize], key: "OCI")
-        }
+        // SentrySDK.configureScope { scope in
+        //   scope.setContext(value: ["imageUncompressedDiskSize": uncompressedDiskSize], key: "OCI")
+        // }
 
         let otherVMFilesSize: UInt64 = 128 * 1024 * 1024
 
@@ -190,9 +190,9 @@ class VMStorageOCI: PrunableStorage {
       try await withTaskCancellationHandler(operation: {
         try await tmpVMDir.pullFromRegistry(registry: registry, manifest: manifest)
         try move(digestName, from: tmpVMDir)
-        transaction.finish()
+        // transaction.finish()
       }, onCancel: {
-        transaction.finish(status: SentrySpanStatus.cancelled)
+        // transaction.finish()
         try? FileManager.default.removeItem(at: tmpVMDir.baseURL)
       })
     } else {

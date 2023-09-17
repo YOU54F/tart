@@ -117,7 +117,7 @@ struct VMConfig: Codable {
 
     display = try container.decodeIfPresent(VMDisplayConfig.self, forKey: .display) ?? VMDisplayConfig()
 
-    debugPort = try container.decode(Int.self, forKey: .debugPort)
+    debugPort = try container.decodeIfPresent(Int.self, forKey: .debugPort) ?? 8000
   }
 
   func encode(to encoder: Encoder) throws {
