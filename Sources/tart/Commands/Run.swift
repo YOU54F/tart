@@ -239,6 +239,7 @@ struct Run: AsyncParsableCommand {
       do {
         var resume = false
 
+#if arch(arm64)
         if #available(macOS 14, *) {
           if FileManager.default.fileExists(atPath: vmDir.stateURL.path) {
             print("restoring VM state from a snapshot...")
@@ -248,7 +249,7 @@ struct Run: AsyncParsableCommand {
             print("resuming VM...")
           }
         }
-          
+#endif
         let startOptions = VMStartOptions(
           startUpFromMacOSRecovery: recovery,
           forceDFU: dfu,
@@ -303,6 +304,7 @@ struct Run: AsyncParsableCommand {
       Task {
         do {
           if #available(macOS 14, *) {
+#if arch(arm64)            
             try vm!.configuration.validateSaveRestoreSupport()
 
             print("pausing VM to take a snapshot...")
@@ -314,6 +316,11 @@ struct Run: AsyncParsableCommand {
             print("snapshot created successfully! shutting down the VM...")
 
             task.cancel()
+#else
+            print(RuntimeError.SuspendFailed("this functionality is not supported on non-Apple Silicon Macs"))
+
+            Foundation.exit(1)            
+#endif
           } else {
             print(RuntimeError.SuspendFailed("this functionality is only supported on macOS 14 (Sonoma) or newer"))
 
@@ -456,6 +463,7 @@ struct Run: AsyncParsableCommand {
       throw UnsupportedOSError("Rosetta directory share", "is")
     }
 
+#if arch(arm64)
     switch VZLinuxRosettaDirectoryShare.availability {
     case .notInstalled:
       throw UnsupportedOSError("Rosetta directory share", "is", "that have Rosetta installed")
@@ -470,6 +478,9 @@ struct Run: AsyncParsableCommand {
     device.share = try VZLinuxRosettaDirectoryShare()
 
     return [device]
+#else
+      return []
+#endif
   }
 
   private func runUI(_ suspendable: Bool) {
@@ -597,10 +608,12 @@ struct VMView: NSViewRepresentable {
 
     // Enable automatic display reconfiguration
     // for guests that support it
+#if arch(arm64)
     if #available(macOS 14.0, *) {
       machineView.automaticallyReconfiguresDisplay = true
     }
 
+#endif
     return machineView
   }
 

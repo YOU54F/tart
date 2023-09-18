@@ -6,6 +6,7 @@ struct UnsupportedHostOSError: Error, CustomStringConvertible {
   }
 }
 
+#if arch(arm64)
 struct Darwin: PlatformSuspendable {
   var ecid: VZMacMachineIdentifier
   var hardwareModel: VZMacHardwareModel
@@ -124,3 +125,4 @@ struct Darwin: PlatformSuspendable {
     [VZMacTrackpadConfiguration()]
   }
 }
+#endif

@@ -96,8 +96,13 @@ struct VMConfig: Codable {
     os = try container.decodeIfPresent(OS.self, forKey: .os) ?? .darwin
     arch = try container.decodeIfPresent(Architecture.self, forKey: .arch) ?? .arm64
     switch os {
+#if arch(arm64)
     case .darwin:
       platform = try Darwin(from: decoder)
+#else
+    case .darwin:
+      throw UnsupportedOSError("Darwin VMs", "are")
+#endif
     case .linux:
       platform = try Linux(from: decoder)
     }

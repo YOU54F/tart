@@ -39,6 +39,7 @@ struct Create: AsyncParsableCommand {
 
     try await withTaskCancellationHandler(operation: {
       if let fromIPSW = fromIPSW {
+#if arch(arm64)        
         let ipswURL: URL
 
         if fromIPSW == "latest" {
@@ -53,6 +54,9 @@ struct Create: AsyncParsableCommand {
         print("romURL: \(romURL)")
 
         _ = try await VM(vmDir: tmpVMDir, ipswURL: ipswURL, diskSizeGB: diskSize, romURL: romURL)
+#else
+        throw UnsupportedArchitectureError()        
+#endif        
       }
 
       if linux {

@@ -6,6 +6,10 @@
 set -e
 
 swift build --product tart --configuration release
-codesign --sign - --entitlements Resources/tart-prod.entitlements --force .build/release/tart
+if [[ $PROD ]]; then
+  codesign --sign - --entitlements Resources/tart-prod.entitlements --force .build/release/tart
+else
+  codesign --sign - --entitlements Resources/tart-dev.entitlements --force .build/release/tart
+fi
 
 .build/release/tart "$@"

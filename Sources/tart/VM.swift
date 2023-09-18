@@ -70,6 +70,7 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
     virtualMachine.delegate = self
   }
 
+#if arch(arm64)
   static func retrieveIPSW(remoteURL: URL) async throws -> URL {
     // Check if we already have this IPSW in cache
     var headRequest = URLRequest(url: remoteURL)
@@ -128,7 +129,7 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
 
     return image.url
   }
-
+#endif
   var inFinalState: Bool {
     get {
       virtualMachine.state == VZVirtualMachine.State.stopped ||
@@ -138,6 +139,7 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
     }
   }
 
+#if arch(arm64)
   init(
     vmDir: VMDirectory,
     ipswURL: URL,
@@ -231,7 +233,7 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
       }
     }
   }
-
+#endif
   @available(macOS 13, *)
   static func linux(vmDir: VMDirectory, diskSizeGB: UInt16) async throws -> VM {
     // Create NVRAM
@@ -248,14 +250,13 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
   }
 
   func start(vmStartOptions: VMStartOptions, resume shouldResume: Bool) async throws {
-      defaultLogger.appendNewLine("we starting?")
     try network.run(sema)
 
     if shouldResume {
-        defaultLogger.appendNewLine("resume to start")
+        defaultLogger.appendNewLine("resuming...")
       try await resume()
     } else {
-      defaultLogger.appendNewLine("trying to start")
+      defaultLogger.appendNewLine("starting...")
       try await start(vmStartOptions)
     }
   }
@@ -279,6 +280,7 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
   @MainActor
   private func start(_ vmStartOptions: VMStartOptions) async throws {
     if #available(macOS 13, *) {
+#if arch(arm64)
       // new API introduced in Ventura
       let startOptions = VZMacOSVirtualMachineStartOptions()
       startOptions.startUpFromMacOSRecovery = vmStartOptions.startUpFromMacOSRecovery
@@ -290,9 +292,13 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
         Dynamic(startOptions)._setFatalErrorAction(vmStartOptions.stopOnFatalError)
       }
       try await virtualMachine.start(options: startOptions)
-      } else {
-      // use method that also available on Monterey
+#else
+      // start the linux vm on x86_64
       try await virtualMachine.start(vmStartOptions.startUpFromMacOSRecovery)
+#endif
+      } else {
+        // use method that also available on Monterey
+        try await virtualMachine.start(vmStartOptions.startUpFromMacOSRecovery)
     }
   }
 
@@ -315,7 +321,8 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
     additionalDiskAttachments: [VZDiskImageStorageDeviceAttachment],
     directorySharingDevices: [VZDirectorySharingDeviceConfiguration],
     serialPorts: [VZSerialPortConfiguration],
-    suspendable: Bool = false
+    suspendable: Bool = false,
+    enableDebugger: Bool = false
   ) throws -> VZVirtualMachineConfiguration {
     let configuration = VZVirtualMachineConfiguration()
 
@@ -323,23 +330,20 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
 
     defaultLogger.appendNewLine("romURL in craftConfiguration: \(romURL)")
     let fileManager = FileManager.default
-    if let romURL = romURL {
+    if let romURL = romURL  {
         if fileManager.fileExists(atPath: romURL.path) {
-            // romURL exists on disk, do something with it
             defaultLogger.appendNewLine("custom romURL exists on disk: \(romURL)")
+            defaultLogger.appendNewLine("configuring with bootloadeer: \(romURL)")
             let bootloader = try vmConfig.platform.bootLoader(nvramURL: nvramURL)
             Dynamic(bootloader)._setROMURL(romURL)
             configuration.bootLoader = bootloader
         } else {
-            // romURL does not exist on disk, do something else
-            defaultLogger.appendNewLine("romURL does not exist on disk")
+            defaultLogger.appendNewLine("romURL does not exist on disk - using default bootloader")
             configuration.bootLoader = try vmConfig.platform.bootLoader(nvramURL: nvramURL)
         }
     } else {
-        // romURL is nil, do something else
-        print("custom romURL does not exist")
+        print("using default bootloader")
         configuration.bootLoader = try vmConfig.platform.bootLoader(nvramURL: nvramURL)
-
     }
 
     // CPU and memory
@@ -394,20 +398,25 @@ class VM: NSObject, VZVirtualMachineDelegate, ObservableObject {
 
     // Directory sharing devices
     configuration.directorySharingDevices = directorySharingDevices
-      
-    // Debug port
+
+    // Debug port - requires private entitlement - com.apple.private.virtualization
+    if enableDebugger {
     let debugStub = Dynamic._VZGDBDebugStubConfiguration(port: vmConfig.debugPort)
     Dynamic(configuration)._setDebugStub(debugStub)
 
     // Serial console; configure only if no prior serial ports are configured
     if serialPorts.isEmpty {
-      // Configure internal Mac serial I/O
-      let serialPort: VZSerialPortConfiguration = Dynamic._VZPL011SerialPortConfiguration().asObject as! VZSerialPortConfiguration
-      serialPort.attachment = VZFileHandleSerialPortAttachment(
-        fileHandleForReading: FileHandle.standardInput,
-        fileHandleForWriting: FileHandle.standardOutput
-      )
-      configuration.serialPorts = [serialPort]
+        // Configure internal Mac serial I/O
+        let serialPort: VZSerialPortConfiguration = Dynamic._VZPL011SerialPortConfiguration().asObject as! VZSerialPortConfiguration
+        serialPort.attachment = VZFileHandleSerialPortAttachment(
+          fileHandleForReading: FileHandle.standardInput,
+          fileHandleForWriting: FileHandle.standardOutput
+        )
+        configuration.serialPorts = [serialPort]
+      } else {
+        // Previously configured serial ports
+        configuration.serialPorts = serialPorts
+      }
     } else {
       // Previously configured serial ports
       configuration.serialPorts = serialPorts
